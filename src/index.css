@@ -133,10 +133,23 @@ body {
   padding: 16px;
   min-width: 180px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-  transition: border-color 0.2s;
+  transition: border-color 0.2s, opacity 0.2s;
 }
 
-.node-card:hover {
+.node-card.effect {
+  border-color: #A371F7;
+}
+
+.node-card.effect:hover {
+  border-color: #D2A8FF;
+}
+
+.node-card.bypassed {
+  opacity: 0.5;
+  border-color: var(--border);
+}
+
+.node-card.bypassed:hover {
   border-color: var(--primary);
 }
 
@@ -145,6 +158,32 @@ body {
   font-weight: 700;
   margin-bottom: 16px;
   text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.bypass-btn {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--secondary);
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s;
+}
+
+.bypass-btn:hover {
+  border-color: var(--primary);
+}
+
+.bypass-btn.active {
+  background: #f85149;
+  border-color: #f85149;
+  color: white;
 }
 
 .node-ports {

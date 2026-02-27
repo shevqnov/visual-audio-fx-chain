@@ -45,6 +45,8 @@ function useAudioEngine() {
   const [compressorThreshold, setCompressorThreshold] = useState<number>(-24)
   const [compressorRatio, setCompressorRatio] = useState<number>(4)
   const [reverbValue, setReverbValue] = useState<number>(30)
+  const [compressorBypass, setCompressorBypass] = useState<boolean>(false)
+  const [reverbBypass, setReverbBypass] = useState<boolean>(false)
   const [error, setError] = useState<string>('')
   const [currentTime, setCurrentTime] = useState<number>(0)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -156,26 +158,46 @@ function useAudioEngine() {
     compressor.attack.value = 0.003
     compressor.release.value = 0.25
     
+    const compressorDry = ctx.createGain()
+    compressorDry.gain.value = compressorBypass ? 1 : 0
+    const compressorWet = ctx.createGain()
+    compressorWet.gain.value = compressorBypass ? 0 : 1
+    
     const reverb = ctx.createConvolver()
     reverb.buffer = createReverbImpulse(ctx, 2, 2)
     
     const reverbGain = ctx.createGain()
     reverbGain.gain.value = reverbValue / 100
     
-    const dryGain = ctx.createGain()
-    dryGain.gain.value = 1 - (reverbValue / 200)
+    const reverbDry = ctx.createGain()
+    reverbDry.gain.value = reverbBypass ? 1 : 0
+    const reverbWet = ctx.createGain()
+    reverbWet.gain.value = reverbBypass ? 0 : (reverbValue / 100)
     
     const analyser = ctx.createAnalyser()
     analyser.fftSize = 2048
     
-    // Цепочка: Source → Gain → Compressor → Dry/Wet split → Reverb → Destination
+    // Цепочка с поддержкой bypass
+    // Source → Gain → Compressor → [dry/wet] → Reverb → [dry/wet] → Analyser → Destination
     source.connect(gain)
     gain.connect(compressor)
-    compressor.connect(dryGain)
-    compressor.connect(reverb)
-    reverb.connect(reverbGain)
-    dryGain.connect(analyser)
-    reverbGain.connect(analyser)
+    
+    // Compressor split: dry path и wet path
+    compressor.connect(compressorDry)
+    compressor.connect(compressorWet)
+    
+    // Reverb receives from compressor
+    compressorWet.connect(reverb)
+    reverb.connect(reverbWet)
+    
+    // Dry signal bypasses reverb
+    compressorDry.connect(reverbDry)
+    
+    // Connect to analyser
+    reverbDry.connect(analyser)
+    reverbWet.connect(analyser)
+    compressorWet.connect(analyser)
+    
     analyser.connect(ctx.destination)
 
     let startOffset = state.pauseTime
@@ -248,6 +270,16 @@ function useAudioEngine() {
   // Изменение reverb
   const handleReverbChange = useCallback((value: number) => {
     setReverbValue(value)
+  }, [])
+
+  // Toggle compressor bypass
+  const handleCompressorBypassToggle = useCallback(() => {
+    setCompressorBypass(prev => !prev)
+  }, [])
+
+  // Toggle reverb bypass
+  const handleReverbBypassToggle = useCallback(() => {
+    setReverbBypass(prev => !prev)
   }, [])
 
   // Эффект для обновления времени воспроизведения
@@ -376,7 +408,9 @@ function useAudioEngine() {
     gainValue,
     compressorThreshold,
     compressorRatio,
+    compressorBypass,
     reverbValue,
+    reverbBypass,
     error,
     currentTime,
     canvasRef,
@@ -388,7 +422,9 @@ function useAudioEngine() {
     handleGainChange,
     handleCompressorThresholdChange,
     handleCompressorRatioChange,
+    handleCompressorBypassToggle,
     handleReverbChange,
+    handleReverbBypassToggle,
     duration: state.audioBuffer?.duration || 0
   }
 }
@@ -401,7 +437,9 @@ function App() {
     gainValue,
     compressorThreshold,
     compressorRatio,
+    compressorBypass,
     reverbValue,
+    reverbBypass,
     error,
     currentTime,
     canvasRef,
@@ -413,7 +451,9 @@ function App() {
     handleGainChange,
     handleCompressorThresholdChange,
     handleCompressorRatioChange,
+    handleCompressorBypassToggle,
     handleReverbChange,
+    handleReverbBypassToggle,
     duration
   } = useAudioEngine()
 
@@ -518,8 +558,17 @@ function App() {
 
         <div className="connection-line">→</div>
 
-        <div className="node-card">
-          <div className="node-title">Compressor</div>
+        <div className={`node-card ${compressorBypass ? 'bypassed' : 'effect'}`}>
+          <div className="node-title">
+            Compressor
+            <button 
+              className={`bypass-btn ${compressorBypass ? 'active' : ''}`}
+              onClick={handleCompressorBypassToggle}
+              title={compressorBypass ? 'Enable' : 'Bypass'}
+            >
+              {compressorBypass ? 'OFF' : 'ON'}
+            </button>
+          </div>
           <div className="node-ports">
             <div className="port input" title="Input" />
             <div className="port output" title="Output" />
@@ -536,6 +585,7 @@ function App() {
               max="0"
               value={compressorThreshold}
               onChange={(e) => handleCompressorThresholdChange(Number(e.target.value))}
+              disabled={compressorBypass}
             />
             <span className="param-label">
               <span>Ratio</span>
@@ -549,14 +599,24 @@ function App() {
               step="0.5"
               value={compressorRatio}
               onChange={(e) => handleCompressorRatioChange(Number(e.target.value))}
+              disabled={compressorBypass}
             />
           </div>
         </div>
 
         <div className="connection-line">→</div>
 
-        <div className="node-card">
-          <div className="node-title">Reverb</div>
+        <div className={`node-card ${reverbBypass ? 'bypassed' : 'effect'}`}>
+          <div className="node-title">
+            Reverb
+            <button 
+              className={`bypass-btn ${reverbBypass ? 'active' : ''}`}
+              onClick={handleReverbBypassToggle}
+              title={reverbBypass ? 'Enable' : 'Bypass'}
+            >
+              {reverbBypass ? 'OFF' : 'ON'}
+            </button>
+          </div>
           <div className="node-ports">
             <div className="port input" title="Input" />
             <div className="port output" title="Output" />
@@ -573,6 +633,7 @@ function App() {
               max="100"
               value={reverbValue}
               onChange={(e) => handleReverbChange(Number(e.target.value))}
+              disabled={reverbBypass}
             />
           </div>
         </div>
