@@ -1,0 +1,263 @@
+:root {
+  --bg: #0D1117;
+  --surface: #161B22;
+  --border: #30363D;
+  --primary: #58A6FF;
+  --secondary: #8B949E;
+  --text: #F0F6FC;
+  --waveform: #58A6FF;
+  --waveform-fill: rgba(88, 166, 255, 0.2);
+  --node-input: #7EE787;
+  --node-output: #F778BA;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'JetBrains Mono', monospace;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  gap: 24px;
+}
+
+.header h1 {
+  font-size: 18px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.file-btn {
+  background: var(--primary);
+  color: var(--bg);
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.file-btn:hover {
+  opacity: 0.9;
+}
+
+.file-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.transport {
+  display: flex;
+  gap: 8px;
+}
+
+.transport-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.transport-btn:hover:not(:disabled) {
+  border-color: var(--primary);
+  background: var(--bg);
+}
+
+.transport-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.transport-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.time-display {
+  font-size: 14px;
+  color: var(--secondary);
+  min-width: 100px;
+  text-align: center;
+}
+
+.main-canvas {
+  flex: 1;
+  padding: 32px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  overflow-x: auto;
+}
+
+.node-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  min-width: 180px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  transition: border-color 0.2s;
+}
+
+.node-card:hover {
+  border-color: var(--primary);
+}
+
+.node-title {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.node-ports {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  height: 40px;
+}
+
+.port {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid;
+  background: var(--bg);
+}
+
+.port.input {
+  border-color: var(--node-input);
+}
+
+.port.output {
+  border-color: var(--node-output);
+}
+
+.node-params {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.param-label {
+  font-size: 12px;
+  color: var(--secondary);
+  display: flex;
+  justify-content: space-between;
+}
+
+.param-slider {
+  width: 100%;
+  height: 6px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--border);
+  border-radius: 3px;
+  outline: none;
+}
+
+.param-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--primary);
+  cursor: pointer;
+}
+
+.param-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--primary);
+  cursor: pointer;
+  border: none;
+}
+
+.visualizer-panel {
+  padding: 16px 24px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  height: 180px;
+}
+
+.visualizer-container {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+.visualizer-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.file-info {
+  font-size: 12px;
+  color: var(--secondary);
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.connection-line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--secondary);
+  font-size: 20px;
+}
+
+.error-message {
+  background: rgba(248, 81, 73, 0.1);
+  border: 1px solid #f85149;
+  color: #f85149;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 12px;
+  margin: 8px 24px;
+}
