@@ -1,9 +1,11 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 
+// Интерфейсы для типизации
 interface AudioEngineState {
   audioContext: AudioContext | null
   sourceNode: AudioBufferSourceNode | null
   gainNode: GainNode | null
+  reverbNode: ConvolverNode | null
   analyserNode: AnalyserNode | null
   audioBuffer: AudioBuffer | null
   isPlaying: boolean
@@ -12,10 +14,12 @@ interface AudioEngineState {
   pauseTime: number
 }
 
+// Начальное состояние
 const initialState: AudioEngineState = {
   audioContext: null,
   sourceNode: null,
   gainNode: null,
+  reverbNode: null,
   analyserNode: null,
   audioBuffer: null,
   isPlaying: false,
@@ -24,46 +28,86 @@ const initialState: AudioEngineState = {
   pauseTime: 0,
 }
 
+// Вспомогательная функция для форматирования времени
 function formatTime(seconds: number): string {
   const mins = Math.floor(seconds / 60)
   const secs = Math.floor(seconds % 60)
   return `${mins}:${secs.toString().padStart(2, '0')}`
 }
 
-function App() {
+// Хук для управления аудио-движком
+function useAudioEngine() {
   const [state, setState] = useState<AudioEngineState>(initialState)
   const [fileName, setFileName] = useState<string>('')
-  const [gainValue, setGainValue] = useState(100)
+  const [gainValue, setGainValue] = useState<number>(100)
+  const [reverbValue, setReverbValue] = useState<number>(30)
   const [error, setError] = useState<string>('')
-  const [currentTime, setCurrentTime] = useState(0)
+  const [currentTime, setCurrentTime] = useState<number>(0)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const animationRef = useRef<number>(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
-
-  const initAudioContext = useCallback(async () => {
+  
+  // Создание импульсного отклика для reverb
+  const createReverbImpulse = useCallback((ctx: AudioContext, duration: number = 2, decay: number = 2): AudioBuffer => {
+    const sampleRate = ctx.sampleRate
+    const length = sampleRate * duration
+    const impulse = ctx.createBuffer(2, length, sampleRate)
+    
+    for (let channel = 0; channel < 2; channel++) {
+      const channelData = impulse.getChannelData(channel)
+      for (let i = 0; i < length; i++) {
+        channelData[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, decay)
+      }
+    }
+    
+    return impulse
+  }, [])
+  
+  // Инициализация аудио контекста
+  const initAudioContext = useCallback(async (): Promise<AudioContext | null> => {
     let ctx = state.audioContext
     if (!ctx) {
-      ctx = new AudioContext()
-      const gain = ctx.createGain()
-      const analyser = ctx.createAnalyser()
-      analyser.fftSize = 2048
-      gain.connect(analyser)
-      analyser.connect(ctx.destination)
-      setState(s => ({ ...s, audioContext: ctx, gainNode: gain, analyserNode: analyser }))
+      try {
+        ctx = new AudioContext()
+        const gain = ctx.createGain()
+        const analyser = ctx.createAnalyser()
+        analyser.fftSize = 2048
+        gain.connect(analyser)
+        analyser.connect(ctx.destination)
+        setState(s => ({ ...s, audioContext: ctx, gainNode: gain, analyserNode: analyser }))
+      } catch (err) {
+        setError('Failed to create audio context')
+        console.error(err)
+        return null
+      }
     }
     if (ctx.state === 'suspended') {
-      await ctx.resume()
+      try {
+        await ctx.resume()
+      } catch (err) {
+        setError('Failed to resume audio context')
+        console.error(err)
+      }
     }
     return ctx
   }, [state.audioContext])
 
+  // Загрузка аудиофайла
   const loadAudioFile = useCallback(async (file: File) => {
     setError('')
     try {
       const ctx = await initAudioContext()
+      if (!ctx) return
+      
       const arrayBuffer = await file.arrayBuffer()
       const audioBuffer = await ctx.decodeAudioData(arrayBuffer)
-      setState(s => ({ ...s, audioBuffer, isPlaying: false, isPaused: false, pauseTime: 0 }))
+      setState(s => ({ 
+        ...s, 
+        audioBuffer, 
+        isPlaying: false, 
+        isPaused: false, 
+        pauseTime: 0 
+      }))
       setFileName(file.name)
       setCurrentTime(0)
     } catch (err) {
@@ -72,6 +116,7 @@ function App() {
     }
   }, [initAudioContext])
 
+  // Обработка изменения файла
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
@@ -79,25 +124,47 @@ function App() {
     }
   }, [loadAudioFile])
 
+  // Воспроизведение
   const handlePlay = useCallback(async () => {
     if (!state.audioBuffer || !state.audioContext) return
     
     const ctx = state.audioContext
     if (ctx.state === 'suspended') {
-      await ctx.resume()
+      try {
+        await ctx.resume()
+      } catch (err) {
+        setError('Failed to resume audio context')
+        console.error(err)
+        return
+      }
     }
 
+    // Создание новых узлов для воспроизведения
     const source = ctx.createBufferSource()
     source.buffer = state.audioBuffer
     
     const gain = ctx.createGain()
     gain.gain.value = gainValue / 100
     
+    const reverb = ctx.createConvolver()
+    reverb.buffer = createReverbImpulse(ctx, 2, 2)
+    
+    const reverbGain = ctx.createGain()
+    reverbGain.gain.value = reverbValue / 100
+    
+    const dryGain = ctx.createGain()
+    dryGain.gain.value = 1 - (reverbValue / 200)
+    
     const analyser = ctx.createAnalyser()
     analyser.fftSize = 2048
     
+    // Цепочка: Source → Gain → Dry/Wet split → Reverb → Destination
     source.connect(gain)
-    gain.connect(analyser)
+    gain.connect(dryGain)
+    gain.connect(reverb)
+    reverb.connect(reverbGain)
+    dryGain.connect(analyser)
+    reverbGain.connect(analyser)
     analyser.connect(ctx.destination)
 
     let startOffset = state.pauseTime
@@ -111,6 +178,7 @@ function App() {
       ...s,
       sourceNode: source,
       gainNode: gain,
+      reverbNode: reverb,
       analyserNode: analyser,
       isPlaying: true,
       isPaused: false,
@@ -121,8 +189,9 @@ function App() {
       setState(s => ({ ...s, isPlaying: false, isPaused: false, pauseTime: 0 }))
       setCurrentTime(0)
     }
-  }, [state.audioBuffer, state.audioContext, state.pauseTime, gainValue])
+  }, [state.audioBuffer, state.audioContext, state.pauseTime, gainValue, reverbValue, createReverbImpulse])
 
+  // Пауза
   const handlePause = useCallback(() => {
     if (state.sourceNode && state.audioContext) {
       const elapsed = state.audioContext.currentTime - state.startTime
@@ -131,6 +200,7 @@ function App() {
     }
   }, [state.sourceNode, state.audioContext, state.startTime])
 
+  // Остановка
   const handleStop = useCallback(() => {
     if (state.sourceNode && state.audioContext) {
       state.sourceNode.stop()
@@ -139,28 +209,39 @@ function App() {
     setCurrentTime(0)
   }, [state.sourceNode, state.audioContext])
 
+  // Изменение громкости
   const handleGainChange = useCallback((value: number) => {
     setGainValue(value)
-    if (state.gainNode) {
-      state.gainNode.gain.setValueAtTime(value / 100, state.audioContext!.currentTime)
+    if (state.gainNode && state.audioContext) {
+      state.gainNode.gain.setValueAtTime(value / 100, state.audioContext.currentTime)
     }
   }, [state.gainNode, state.audioContext])
 
+  // Изменение reverb
+  const handleReverbChange = useCallback((value: number) => {
+    setReverbValue(value)
+  }, [])
+
+  // Эффект для обновления времени воспроизведения
   useEffect(() => {
     if (!state.audioContext) return
 
-    let intervalId: number
+    let intervalId: number | null = null
     if (state.isPlaying && state.sourceNode) {
       intervalId = window.setInterval(() => {
-        const elapsed = state.audioContext!.currentTime - state.startTime
-        setCurrentTime(elapsed)
+        if (state.audioContext) {
+          const elapsed = state.audioContext.currentTime - state.startTime
+          setCurrentTime(elapsed)
+        }
       }, 100)
     }
+    
     return () => {
       if (intervalId) clearInterval(intervalId)
     }
   }, [state.isPlaying, state.audioContext, state.startTime, state.sourceNode])
 
+  // Эффект для визуализации
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -196,7 +277,7 @@ function App() {
 
         for (let i = 0; i < bufferLength; i++) {
           const v = dataArray[i] / 128.0
-          const y = (v * height) / 2
+          const y = v * height / 2
 
           if (i === 0) {
             ctx.moveTo(x, y)
@@ -217,7 +298,7 @@ function App() {
         x = 0
         for (let i = 0; i < bufferLength; i++) {
           const v = dataArray[i] / 128.0
-          const y = (v * height) / 2
+          const y = v * height / 2
           ctx.lineTo(x, y)
           x += sliceWidth
         }
@@ -243,6 +324,7 @@ function App() {
     }
   }, [state.analyserNode, state.isPlaying])
 
+  // Эффект для изменения размера холста
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -260,7 +342,44 @@ function App() {
     return () => window.removeEventListener('resize', resizeCanvas)
   }, [])
 
-  const duration = state.audioBuffer?.duration || 0
+  return {
+    state,
+    fileName,
+    gainValue,
+    reverbValue,
+    error,
+    currentTime,
+    canvasRef,
+    fileInputRef,
+    handleFileChange,
+    handlePlay,
+    handlePause,
+    handleStop,
+    handleGainChange,
+    handleReverbChange,
+    duration: state.audioBuffer?.duration || 0
+  }
+}
+
+// Основной компонент
+function App() {
+  const {
+    state,
+    fileName,
+    gainValue,
+    reverbValue,
+    error,
+    currentTime,
+    canvasRef,
+    fileInputRef,
+    handleFileChange,
+    handlePlay,
+    handlePause,
+    handleStop,
+    handleGainChange,
+    handleReverbChange,
+    duration
+  } = useAudioEngine()
 
   return (
     <>
@@ -357,6 +476,30 @@ function App() {
               max="200"
               value={gainValue}
               onChange={(e) => handleGainChange(Number(e.target.value))}
+            />
+          </div>
+        </div>
+
+        <div className="connection-line">→</div>
+
+        <div className="node-card">
+          <div className="node-title">Reverb</div>
+          <div className="node-ports">
+            <div className="port input" title="Input" />
+            <div className="port output" title="Output" />
+          </div>
+          <div className="node-params">
+            <span className="param-label">
+              <span>Mix</span>
+              <span>{reverbValue}%</span>
+            </span>
+            <input
+              type="range"
+              className="param-slider"
+              min="0"
+              max="100"
+              value={reverbValue}
+              onChange={(e) => handleReverbChange(Number(e.target.value))}
             />
           </div>
         </div>
