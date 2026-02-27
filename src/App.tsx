@@ -5,6 +5,7 @@ interface AudioEngineState {
   audioContext: AudioContext | null
   sourceNode: AudioBufferSourceNode | null
   gainNode: GainNode | null
+  compressorNode: DynamicsCompressorNode | null
   reverbNode: ConvolverNode | null
   analyserNode: AnalyserNode | null
   audioBuffer: AudioBuffer | null
@@ -19,6 +20,7 @@ const initialState: AudioEngineState = {
   audioContext: null,
   sourceNode: null,
   gainNode: null,
+  compressorNode: null,
   reverbNode: null,
   analyserNode: null,
   audioBuffer: null,
@@ -40,6 +42,8 @@ function useAudioEngine() {
   const [state, setState] = useState<AudioEngineState>(initialState)
   const [fileName, setFileName] = useState<string>('')
   const [gainValue, setGainValue] = useState<number>(100)
+  const [compressorThreshold, setCompressorThreshold] = useState<number>(-24)
+  const [compressorRatio, setCompressorRatio] = useState<number>(4)
   const [reverbValue, setReverbValue] = useState<number>(30)
   const [error, setError] = useState<string>('')
   const [currentTime, setCurrentTime] = useState<number>(0)
@@ -146,6 +150,12 @@ function useAudioEngine() {
     const gain = ctx.createGain()
     gain.gain.value = gainValue / 100
     
+    const compressor = ctx.createDynamicsCompressor()
+    compressor.threshold.value = compressorThreshold
+    compressor.ratio.value = compressorRatio
+    compressor.attack.value = 0.003
+    compressor.release.value = 0.25
+    
     const reverb = ctx.createConvolver()
     reverb.buffer = createReverbImpulse(ctx, 2, 2)
     
@@ -158,10 +168,11 @@ function useAudioEngine() {
     const analyser = ctx.createAnalyser()
     analyser.fftSize = 2048
     
-    // Цепочка: Source → Gain → Dry/Wet split → Reverb → Destination
+    // Цепочка: Source → Gain → Compressor → Dry/Wet split → Reverb → Destination
     source.connect(gain)
-    gain.connect(dryGain)
-    gain.connect(reverb)
+    gain.connect(compressor)
+    compressor.connect(dryGain)
+    compressor.connect(reverb)
     reverb.connect(reverbGain)
     dryGain.connect(analyser)
     reverbGain.connect(analyser)
@@ -178,6 +189,7 @@ function useAudioEngine() {
       ...s,
       sourceNode: source,
       gainNode: gain,
+      compressorNode: compressor,
       reverbNode: reverb,
       analyserNode: analyser,
       isPlaying: true,
@@ -189,7 +201,7 @@ function useAudioEngine() {
       setState(s => ({ ...s, isPlaying: false, isPaused: false, pauseTime: 0 }))
       setCurrentTime(0)
     }
-  }, [state.audioBuffer, state.audioContext, state.pauseTime, gainValue, reverbValue, createReverbImpulse])
+  }, [state.audioBuffer, state.audioContext, state.pauseTime, gainValue, compressorThreshold, compressorRatio, reverbValue, createReverbImpulse])
 
   // Пауза
   const handlePause = useCallback(() => {
@@ -216,6 +228,22 @@ function useAudioEngine() {
       state.gainNode.gain.setValueAtTime(value / 100, state.audioContext.currentTime)
     }
   }, [state.gainNode, state.audioContext])
+
+  // Изменение порога компрессора
+  const handleCompressorThresholdChange = useCallback((value: number) => {
+    setCompressorThreshold(value)
+    if (state.compressorNode) {
+      state.compressorNode.threshold.setValueAtTime(value, state.audioContext!.currentTime)
+    }
+  }, [state.compressorNode, state.audioContext])
+
+  // Изменение ratio компрессора
+  const handleCompressorRatioChange = useCallback((value: number) => {
+    setCompressorRatio(value)
+    if (state.compressorNode) {
+      state.compressorNode.ratio.setValueAtTime(value, state.audioContext!.currentTime)
+    }
+  }, [state.compressorNode, state.audioContext])
 
   // Изменение reverb
   const handleReverbChange = useCallback((value: number) => {
@@ -346,6 +374,8 @@ function useAudioEngine() {
     state,
     fileName,
     gainValue,
+    compressorThreshold,
+    compressorRatio,
     reverbValue,
     error,
     currentTime,
@@ -356,6 +386,8 @@ function useAudioEngine() {
     handlePause,
     handleStop,
     handleGainChange,
+    handleCompressorThresholdChange,
+    handleCompressorRatioChange,
     handleReverbChange,
     duration: state.audioBuffer?.duration || 0
   }
@@ -367,6 +399,8 @@ function App() {
     state,
     fileName,
     gainValue,
+    compressorThreshold,
+    compressorRatio,
     reverbValue,
     error,
     currentTime,
@@ -377,6 +411,8 @@ function App() {
     handlePause,
     handleStop,
     handleGainChange,
+    handleCompressorThresholdChange,
+    handleCompressorRatioChange,
     handleReverbChange,
     duration
   } = useAudioEngine()
@@ -476,6 +512,43 @@ function App() {
               max="200"
               value={gainValue}
               onChange={(e) => handleGainChange(Number(e.target.value))}
+            />
+          </div>
+        </div>
+
+        <div className="connection-line">→</div>
+
+        <div className="node-card">
+          <div className="node-title">Compressor</div>
+          <div className="node-ports">
+            <div className="port input" title="Input" />
+            <div className="port output" title="Output" />
+          </div>
+          <div className="node-params">
+            <span className="param-label">
+              <span>Threshold</span>
+              <span>{compressorThreshold} dB</span>
+            </span>
+            <input
+              type="range"
+              className="param-slider"
+              min="-60"
+              max="0"
+              value={compressorThreshold}
+              onChange={(e) => handleCompressorThresholdChange(Number(e.target.value))}
+            />
+            <span className="param-label">
+              <span>Ratio</span>
+              <span>{compressorRatio}:1</span>
+            </span>
+            <input
+              type="range"
+              className="param-slider"
+              min="1"
+              max="20"
+              step="0.5"
+              value={compressorRatio}
+              onChange={(e) => handleCompressorRatioChange(Number(e.target.value))}
             />
           </div>
         </div>
